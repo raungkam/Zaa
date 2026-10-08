@@ -1,0 +1,57 @@
+//@version=6
+indicator("Trend-join Long", overlay=true)
+
+// Run on an intraday chart (1-5 min) with EXTENDED HOURS enabled (needed for the pre-market high).
+// Add to every symbol in the watchlist exported from the pre-market scanner, then create ONE alert
+// per symbol (or a watchlist alert) on "Any alert() function call", webhook -> strategy_report.py.
+
+startHour   = input.int(10, "Earliest signal hour (exchange time)", minval=0, maxval=15)
+startMinute = input.int(0,  "Earliest signal minute", minval=0, maxval=59)
+smaLen      = input.int(200, "Daily SMA length", minval=1)
+
+// 1) Yesterday's daily high / close and the 200 SMA as of yesterday's close (no look-ahead).
+prevHigh  = request.security(syminfo.tickerid, "D", high[1],               lookahead=barmerge.lookahead_on)
+prevClose = request.security(syminfo.tickerid, "D", close[1],              lookahead=barmerge.lookahead_on)
+prevSma   = request.security(syminfo.tickerid, "D", ta.sma(close, smaLen)[1], lookahead=barmerge.lookahead_on)
+
+// Today's pre-market high and high of day (pre-market + regular session) from bars BEFORE this one.
+newDay   = ta.change(time("D")) != 0
+var float preHigh = na
+var float hod     = na
+if newDay
+    preHigh := na
+    hod     := na
+float hodPrev = hod                       // HOD up to the previous bar
+if session.ispremarket
+    preHigh := na(preHigh) ? high : math.max(preHigh, high)
+hod := na(hod) ? high : math.max(hod, high)
+
+// Time gate: only after 10:00 exchange time.
+afterStart = hour * 60 + minute >= startHour * 60 + startMinute
+
+c1 = close > prevHigh                     // above yesterday's daily high
+c2 = prevClose > prevSma                  // yesterday closed above 200 SMA
+c3 = not na(preHigh) and close > preHigh and not na(hodPrev) and close > hodPrev  // above pre-market high and current HOD
+valid = session.ismarket and afterStart and barstate.isconfirmed and c1 and c2 and c3
+
+var bool fired = false
+if newDay
+    fired := false
+signal = valid and not fired
+if signal
+    fired := true
+
+plotshape(signal, "Trend-join Long", shape.triangleup, location.belowbar, color.new(color.green, 0), size=size.small, text="TJL")
+plot(prevHigh, "Prev day high", color.new(color.orange, 40), style=plot.style_stepline)
+plot(preHigh,  "Pre-market high", color.new(color.blue, 40), style=plot.style_stepline)
+
+if signal
+    msg = '{"signal":"trend_join_long","ticker":"' + syminfo.ticker + '","exchange":"' + syminfo.prefix +
+          '","price":' + str.tostring(close, "#.####") +
+          ',"prev_day_high":' + str.tostring(prevHigh, "#.####") +
+          ',"prev_close":' + str.tostring(prevClose, "#.####") +
+          ',"sma200":' + str.tostring(prevSma, "#.####") +
+          ',"premarket_high":' + str.tostring(preHigh, "#.####") +
+          ',"prev_bar_hod":' + str.tostring(hodPrev, "#.####") +
+          ',"time":"' + str.format_time(time, "yyyy-MM-dd'T'HH:mm:ssZ", syminfo.timezone) + '"}'
+    alert(msg, alert.freq_once_per_bar_close)
