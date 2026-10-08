@@ -11,7 +11,7 @@ def test_slots():
     a = [t.strftime("%H:%M") for k, t in s if k == "a"]
     b = [t.strftime("%H:%M") for k, t in s if k == "b"]
     assert a[0] == "08:30" and a[-1] == "14:00" and len(a) == 12
-    assert b[0] == "08:35" and b[-1] == "14:35" and len(b) == 12
+    assert b[0] == "08:35" and b[-1] == "14:35" and len(b) == 13
     assert rs.slots(date(2026, 10, 10)) == []  # Saturday
 
 

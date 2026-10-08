@@ -216,7 +216,7 @@ def run(day, out_dir, max_candidates):
     y = Yahoo()
     symbols = y.candidates(max_candidates)
     if not symbols:
-        sys.exit("error: no candidates returned from Yahoo Finance")
+        raise RuntimeError("no candidates returned from Yahoo Finance")
     quotes = y.quotes(symbols)
     if datetime.now(NY).time() >= dtime(9, 30):
         # Yahoo stops updating pre-market fields at the open: gap/price now come from the regular session.
