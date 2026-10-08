@@ -41,3 +41,17 @@ Workflow:
    (TradingView needs HTTPS/port 80/443, so put a reverse proxy or tunnel in front of the receiver; webhooks and watchlist alerts need a paid TradingView plan).
 4. `python strategy_report.py serve` receives alerts, drops any ticker not in the day's pre-market scan, re-checks the three criteria,
    and saves `results/signals_DATE.json` (price, gap %, catalyst, levels). `python strategy_report.py report` prints the day's signals.
+
+## Automated schedule + Telegram
+
+`python run_schedule.py` (weekdays, New York time) runs:
+- **Scanner A** (pre-market gappers) at 08:30, 09:00, ... 14:00;
+- **Scanner B** (Trend-join Long) at 08:35, 09:05, ... 14:35 (last run before 15:00) on every ticker Scanner A has found so far that day
+  (`results/universe_DATE.json`). B evaluates the rules directly from Yahoo data (`strategy_scan.py`) and only fires after 10:00 ET,
+  so the 08:35–09:35 B runs report "No valid setups". The TradingView indicator is the real-time alternative.
+
+After every run one Telegram message is sent, `[Scanner A: Pre-market Gappers]` + list, or `[Scanner B: Trend-join Long Hits]` + setups.
+Setup env vars `TELEGRAM_BOT_TOKEN` (from @BotFather) and `TELEGRAM_CHAT_ID`; never commit them. Test with `python run_schedule.py --once a --dry-run`.
+After 09:30 ET, Scanner A switches from pre-market price/gap to the regular-session price/gap (pre-market volume stays fixed at the 04:00-09:30 total).
+It must run on an always-on machine (a VPS, Raspberry Pi, etc.). Equivalent cron lines, with the machine on New York time:
+`30,0 8-13 * * 1-5 ... run_schedule.py --once a` and so on; the daemon is simpler. US market holidays are not detected, so you get a failure message on those days.

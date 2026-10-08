@@ -18,7 +18,7 @@ import os
 import re
 import sys
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, time as dtime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -85,6 +85,19 @@ class Yahoo:
             data = self._get("/v7/finance/quote", symbols=",".join(chunk))
             for q in data["quoteResponse"]["result"]:
                 out[q["symbol"]] = q
+        return out
+
+    def bars(self, symbol, interval, rng, prepost=False):
+        """[(datetime in New York time, high, close, volume)] for a chart request."""
+        data = self._get(f"/v8/finance/chart/{symbol}", interval=interval,
+                         range=rng, includePrePost=str(prepost).lower())
+        res = data["chart"]["result"][0]
+        q = res["indicators"]["quote"][0]
+        out = []
+        for ts, h, c, v in zip(res.get("timestamp") or [], q.get("high") or [],
+                               q.get("close") or [], q.get("volume") or []):
+            if h is not None and c is not None:
+                out.append((datetime.fromtimestamp(ts, NY), h, c, v or 0))
         return out
 
     def premarket_volume(self, symbol, day):
@@ -205,6 +218,11 @@ def run(day, out_dir, max_candidates):
     if not symbols:
         sys.exit("error: no candidates returned from Yahoo Finance")
     quotes = y.quotes(symbols)
+    if datetime.now(NY).time() >= dtime(9, 30):
+        # Yahoo stops updating pre-market fields at the open: gap/price now come from the regular session.
+        for q in quotes.values():
+            q["preMarketPrice"] = q.get("regularMarketPrice")
+            q["preMarketChangePercent"] = q.get("regularMarketChangePercent")
     # Cheap pre-filter on price/gap before fetching per-symbol volume.
     quotes = {s: q for s, q in quotes.items()
               if q.get("quoteType") == "EQUITY"
